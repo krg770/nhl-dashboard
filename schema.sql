@@ -127,5 +127,8 @@ INSERT INTO pipeline_status (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 INSERT INTO podcasts (name, rss_url) VALUES
     ('Hockey Gambling Podcast', 'https://feeds.simplecast.com/caDpJU1D'),
     ('PuckTime', 'https://www.spreaker.com/show/6653697/episodes/feed'),
-    ('Sick Hockey Picks', 'https://feeds.megaphone.fm/SICMED8934387209')
+    ('Sick Hockey Picks', 'https://feeds.megaphone.fm/SICMED8934387209'),
+    ('The Ice Guys', 'https://feeds.simplecast.com/j21MjKd6'),
+    -- Multi-sport (~11 min/episode); episode_filter.py only lets through episodes with hockey in the title.
+    ('The Daily Juice - BettingPros', 'https://rss.pdrl.fm/49ade8/www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/58472ddd-be56-4002-8937-b2d70144b8d5/cddd4ab4-85f4-4769-9ca3-b2d70144b8ef/podcast.rss')
 ON CONFLICT (rss_url) DO NOTHING;

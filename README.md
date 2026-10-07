@@ -25,9 +25,11 @@ Windows Task Scheduler (hourly, :40)
        worker.py              download -> faster-whisper -> `claude -p` extraction -> bet_quotes
 ```
 
-- **Shows** (all NHL-only, seeded in `schema.sql`): Hockey Gambling Podcast,
-  PuckTime, Sick Hockey Picks. `episode_filter.py` also skips anything older
-  than 20h — daily betting talk is worthless once the games are played.
+- **Shows** (seeded in `schema.sql`): NHL-only — Hockey Gambling Podcast,
+  PuckTime, Sick Hockey Picks, The Ice Guys; multi-sport — The Daily Juice
+  (BettingPros), whose episodes are processed only when the title mentions
+  hockey. `episode_filter.py` also skips anything older than 20h — daily
+  betting talk is worthless once the games are played.
 - **Subjects**: `player` (goals, shots, points, saves, ...), `team`
   (moneyline, puck line, team total), `game` (total, first period, ...),
   plus season-long futures.
