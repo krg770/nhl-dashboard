@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NHL Betting Buzz</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Arial, sans-serif; background: #0f1115; color: #e4e6eb; font-size: 13px; }
+  header { padding: 12px 20px; background: #1a1d24; border-bottom: 1px solid #2a2e37; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: #6b7280; font-size: 12px; }
+  main { padding: 16px 20px; max-width: 1100px; margin: 0 auto; }
+  section { background: #171a21; border: 1px solid #262a33; border-radius: 6px; margin-bottom: 16px; overflow: hidden; }
+  section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #9099a8; padding: 10px 12px; margin: 0; border-bottom: 1px solid #262a33; display: flex; justify-content: space-between; align-items: center; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 6px 10px; font-size: 11px; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #262a33; }
+  td { padding: 6px 10px; border-bottom: 1px solid #1e2129; vertical-align: top; }
+  tr:hover td { background: #1c2029; }
+  .empty-state { padding: 24px 12px; text-align: center; color: #6b7280; font-style: italic; }
+  .badge { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+  .rising { background: #1a3a2a; color: #4ade80; }
+  .falling { background: #3a1a1a; color: #f87171; }
+  .neutral { background: #2a2d35; color: #9ca3af; }
+
+  .pipeline-status-bar { padding: 6px 20px; font-size: 11px; background: #14161c; border-bottom: 1px solid #2a2e37; color: #9099a8; }
+  .pipeline-status-bar.running { color: #60a5fa; }
+  .pipeline-status-bar strong { color: #e4e6eb; }
+  .pipeline-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #60a5fa; margin-right: 6px; animation: pipeline-pulse 1.5s infinite; }
+  @keyframes pipeline-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .run-history-toggle { margin-left: 12px; background: none; border: 1px solid #2a2e37; color: #9099a8; border-radius: 4px; padding: 1px 8px; font-size: 11px; cursor: pointer; }
+  .run-history-toggle:hover { color: #e4e6eb; border-color: #3a3f4b; }
+  .run-history { padding: 10px 20px 14px; background: #14161c; border-bottom: 1px solid #2a2e37; font-size: 12px; color: #9099a8; overflow-x: auto; }
+  .run-history h4 { margin: 0 0 6px; font-size: 12px; color: #e4e6eb; font-weight: 600; }
+  .run-history-table { width: auto; border-collapse: collapse; margin-bottom: 12px; }
+  .run-history-table th { text-align: left; font-weight: 500; font-size: 10.5px; color: #6b7280; padding: 3px 14px 3px 0; border: none; text-transform: none; }
+  .run-history-table td { padding: 3px 14px 3px 0; border: none; color: #c4c9d4; white-space: nowrap; }
+  .run-history-table td.wrap { white-space: normal; max-width: 420px; }
+  .run-outcome-ok { color: #4ade80; } .run-outcome-warn { color: #fbbf24; } .run-outcome-bad { color: #f87171; }
+  .run-outcome-run { color: #60a5fa; } .run-outcome-idle { color: #9099a8; }
+  .run-retry-btn { background: #1c2029; border: 1px solid #3a3f4b; color: #e4e6eb; border-radius: 4px; padding: 1px 8px; font-size: 11px; cursor: pointer; margin-right: 6px; }
+  .run-retry-btn:hover { border-color: #60a5fa; }
+
+  .focus-intro { padding: 10px 14px; color: #9099a8; font-size: 12px; line-height: 1.5; border-bottom: 1px solid #262a33; }
+  .focus-intro strong { color: #e4e6eb; }
+  .focus-games { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #262a33; font-size: 12px; align-items: center; }
+  .focus-games .label { color: #6b7280; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.5px; }
+  .focus-game-chip { background: #1c2029; border: 1px solid #2a2e37; border-radius: 12px; padding: 2px 10px; color: #c4c9d4; }
+  .focus-game-chip b { color: #e4e6eb; font-weight: 600; }
+  .focus-tier { padding: 12px 14px 4px; font-size: 12px; font-weight: 600; color: #e4e6eb; }
+  .focus-tier small { color: #6b7280; font-weight: 400; margin-left: 6px; }
+  .focus-note { padding: 8px 14px 12px; color: #fbbf24; font-size: 12px; }
+  .focus-card { display: flex; gap: 12px; padding: 10px 14px; border-top: 1px solid #1e2129; align-items: flex-start; }
+  .focus-rank { font-size: 20px; font-weight: 700; color: #4f8cff; min-width: 28px; line-height: 1.2; }
+  .focus-main { flex: 1; min-width: 0; }
+  .focus-title { font-size: 14px; color: #e4e6eb; font-weight: 600; }
+  .focus-title .prop { color: #4f8cff; font-weight: 600; margin-left: 6px; }
+  .focus-title .line { color: #9099a8; font-weight: 400; margin-left: 6px; font-size: 12px; }
+  .focus-title .who { color: #6b7280; font-weight: 400; font-size: 12px; }
+  .focus-meta { font-size: 12px; color: #9099a8; margin-top: 3px; }
+  .focus-dots { letter-spacing: 2px; color: #4f8cff; margin-right: 6px; }
+  .focus-dots .off { color: #2f3441; }
+  .focus-chips { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .focus-chip { font-size: 10.5px; padding: 1px 7px; border-radius: 10px; background: #262a33; color: #9ca3af; }
+  .focus-chip.good { background: #1a3a2a; color: #4ade80; }
+  .focus-chip.bad { background: #3a1a1a; color: #f87171; }
+  .focus-chip.warn { background: #3a3218; color: #fbbf24; }
+  .focus-side { text-align: center; min-width: 84px; }
+  .focus-score { display: inline-block; min-width: 46px; padding: 3px 8px; border-radius: 6px; font-size: 16px; font-weight: 700; color: #0f1115; }
+  .focus-score-cap { font-size: 9.5px; color: #6b7280; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .focus-dir { display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 3px; }
+  .focus-dir.for, .focus-dir.over { background: #1a3a2a; color: #4ade80; }
+  .focus-dir.against, .focus-dir.under { background: #3a1a1a; color: #f87171; }
+  .focus-details { margin-top: 6px; font-size: 12px; }
+  .focus-details summary { cursor: pointer; color: #6b7280; }
+  .focus-details summary:hover { color: #9ca3af; }
+  .focus-take { margin: 6px 0 0 4px; padding-left: 10px; border-left: 2px solid #2a2e37; color: #c4c9d4; }
+  .focus-take .who { color: #e4e6eb; font-weight: 600; }
+  .focus-take .why { color: #9099a8; margin-top: 2px; }
+  .focus-breakdown { margin: 8px 0 2px 4px; display: grid; grid-template-columns: 190px 1fr 46px; gap: 3px 8px; align-items: center; color: #9099a8; }
+  .focus-breakdown .bar { height: 6px; background: #262a33; border-radius: 3px; overflow: hidden; }
+  .focus-breakdown .bar > div { height: 100%; background: #4f8cff; }
+  .focus-footnote { padding: 8px 14px 12px; color: #6b7280; font-size: 11px; border-top: 1px solid #1e2129; }
+  .disclaimer { background: #2a2210; border-bottom: 1px solid #4a3a10; color: #fbbf24; padding: 6px 20px; font-size: 11.5px; }
+  @media (max-width: 700px) {
+    main { padding: 12px 10px; }
+    .focus-card { flex-wrap: wrap; }
+    .focus-side { min-width: 100%; text-align: left; }
+    .focus-breakdown { grid-template-columns: 130px 1fr 40px; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const API = "";
+
+function useApi(path, deps = [], refreshMs = null) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      fetch(API + path)
+        .then(r => r.json())
+        .then(d => { if (!cancelled) { setData(d); setLoading(false); } })
+        .catch(() => { if (!cancelled) { setData(null); setLoading(false); } });
+    }
+    setLoading(true);
+    load();
+    const interval = refreshMs ? setInterval(load, refreshMs) : null;
+    return () => { cancelled = true; if (interval) clearInterval(interval); };
+  }, deps);
+  return [data, loading];
+}
+
+function EmptyState({ text }) {
+  return <div className="empty-state">{text}</div>;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return null;
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  if (diffMs < 0) return "just now";
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function fmtRunLength(startIso, endIso) {
+  if (!startIso || !endIso) return "—";
+  const mins = Math.round((new Date(endIso) - new Date(startIso)) / 60000);
+  if (mins < 1) return "<1m";
+  return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function formatDuration(seconds) {
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+// Game start in Eastern time, e.g. "Wed 7:30 PM ET (in 5h)".
+function gameLabel(iso) {
+  const d = new Date(iso);
+  const opts = { timeZone: "America/New_York" };
+  const day = d.toLocaleDateString(undefined, { ...opts, weekday: "short" });
+  const time = d.toLocaleTimeString(undefined, { ...opts, hour: "numeric", minute: "2-digit" });
+  const hrs = (d - new Date()) / 3600000;
+  const rel = hrs < 1 ? "starting soon" : hrs < 24 ? `in ${Math.round(hrs)}h` : `in ${Math.round(hrs / 24)}d`;
+  return `${day} ${time} ET (${rel})`;
+}
+
+const RUN_OUTCOMES = {
+  ok: { label: "Completed", cls: "run-outcome-ok" },
+  errors: { label: "Completed, some failed", cls: "run-outcome-warn" },
+  idle: { label: "Nothing new", cls: "run-outcome-idle" },
+  running: { label: "Running now", cls: "run-outcome-run" },
+  interrupted: { label: "Never finished", cls: "run-outcome-bad" },
+  failed: { label: "Failed", cls: "run-outcome-bad" },
+};
+
+function RunHistoryPanel() {
+  const [tick, setTick] = useState(0);
+  const [msg, setMsg] = useState(null);
+  const [runsData] = useApi("/api/pipeline_runs?limit=10", [tick], 30000);
+  const [errData] = useApi("/api/error_episodes", [tick], 30000);
+  const runs = (runsData && runsData.runs) || [];
+  const errEps = (errData && errData.episodes) || [];
+
+  function retry(path) {
+    fetch(API + path, { method: "POST" })
+      .then(r => r.json())
+      .then(d => {
+        setMsg(d.requeued ? `Queued ${d.requeued} episode(s) for retry — picked up on the next scheduled run.` : "Nothing to requeue.");
+        setTick(t => t + 1);
+      })
+      .catch(() => setMsg("Retry request failed."));
+  }
+
+  return (
+    <div className="run-history">
+      <h4>Recent runs (up to 10)</h4>
+      {runs.length === 0 ? (
+        <div style={{ marginBottom: 12 }}>No runs recorded yet — history starts with the first scheduled run.</div>
+      ) : (
+        <table className="run-history-table">
+          <thead><tr><th>Started</th><th>Finished</th><th>Took</th><th>Result</th><th>New episodes found</th><th>Processed</th><th>Failed</th><th>Bets added</th></tr></thead>
+          <tbody>
+            {runs.map(r => {
+              const o = RUN_OUTCOMES[r.outcome] || { label: r.outcome, cls: "" };
+              return (
+                <tr key={r.id} title={r.note || ""}>
+                  <td>{fmtDateTime(r.started_at)}</td>
+                  <td>{r.finished_at ? fmtDateTime(r.finished_at) : "—"}</td>
+                  <td>{fmtRunLength(r.started_at, r.finished_at)}</td>
+                  <td className={o.cls}>{o.label}</td>
+                  <td>{r.episodes_found}</td>
+                  <td>{r.episodes_planned > 0 ? `${r.episodes_processed} of ${r.episodes_planned}` : "—"}</td>
+                  <td>{r.episodes_errored || 0}</td>
+                  <td>{r.items_added}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {errEps.length > 0 && (
+        <>
+          <h4>Failed episodes ({errEps.length}) <button className="run-retry-btn" onClick={() => retry("/api/retry_errors")}>Retry all</button></h4>
+          <table className="run-history-table">
+            <thead><tr><th></th><th>Podcast</th><th>Episode</th><th>Failed</th><th>Why</th></tr></thead>
+            <tbody>
+              {errEps.map(e => (
+                <tr key={e.id}>
+                  <td><button className="run-retry-btn" onClick={() => retry(`/api/episodes/${e.id}/retry`)}>Retry</button></td>
+                  <td>{e.podcast}</td>
+                  <td className="wrap">{e.title}</td>
+                  <td>{fmtDateTime(e.failed_at)}</td>
+                  <td className="wrap">{e.error_message}{e.has_transcript ? " (transcript saved, retry only re-runs extraction)" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {msg && <div>{msg}</div>}
+    </div>
+  );
+}
+
+function PipelineStatusBar() {
+  const [data, loading] = useApi("/api/pipeline_status", [], 15000);
+  const [showHistory, setShowHistory] = useState(false);
+  if (loading || !data) return null;
+
+  const historyToggle = (
+    <button className="run-history-toggle" onClick={() => setShowHistory(s => !s)}>
+      {showHistory ? "Hide run history ▴" : "Run history ▾"}
+    </button>
+  );
+
+  if (data.is_running) {
+    const remaining = data.episodes_remaining_this_run;
+    const eta = (remaining > 0 && data.avg_seconds_per_episode) ? formatDuration(remaining * data.avg_seconds_per_episode) : null;
+    const stageLabel = { loading_model: "loading model", downloading: "downloading", transcribing: "transcribing", extracting: "extracting bets" }[data.stage] || data.stage;
+    return (
+      <>
+        <div className="pipeline-status-bar running">
+          <span className="pipeline-dot" />
+          Processing{data.current_episode_title && <>: <strong>{data.current_episode_title}</strong></>}
+          {stageLabel && <> ({stageLabel})</>}
+          {data.episodes_total_this_run && <> — episode {Math.min(data.episodes_done_this_run + 1, data.episodes_total_this_run)} of {data.episodes_total_this_run}</>}
+          {eta && <> — ETA ~{eta}</>}
+          {data.run_started_at && <> — run started {fmtDateTime(data.run_started_at)}</>}
+          {historyToggle}
+        </div>
+        {showHistory && <RunHistoryPanel />}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="pipeline-status-bar">
+        Pipeline idle
+        {data.last_finished_at && <> — last run finished <strong>{fmtDateTime(data.last_finished_at)}</strong> ({timeAgo(data.last_finished_at)})</>}
+        {data.last_poll_at && <> — feeds last checked <strong>{fmtDateTime(data.last_poll_at)}</strong> ({data.last_poll_new_count ?? 0} new found)</>}
+        {data.episodes_queued_total > 0 && <> — <strong>{data.episodes_queued_total}</strong> episode(s) queued</>}
+        {historyToggle}
+      </div>
+      {showHistory && <RunHistoryPanel />}
+    </>
+  );
+}
+
+function LeanBadge({ lean }) {
+  if (!lean) return null;
+  const cls = lean === "favorable" ? "rising" : lean === "unfavorable" ? "falling" : "neutral";
+  return <span className={"badge " + cls}>{lean}</span>;
+}
+
+const STANCE_LABEL = { over: "OVER", under: "UNDER", for: "BACKING", against: "FADING" };
+
+function focusScoreColor(score) {
+  // red (weak agreement) -> amber -> green (strong agreement)
+  return `hsl(${Math.round(Math.min(score, 100) * 1.2)}, 68%, 56%)`;
+}
+
+function FocusCard({ p }) {
+  const dots = Array.from({ length: Math.max(4, p.analysts) }, (_, i) => i < p.analysts);
+  const matchup = `${p.is_home ? "vs" : "@"} ${p.opponent}`;
+  return (
+    <div className="focus-card">
+      <div className="focus-rank">{p.rank}</div>
+      <div className="focus-main">
+        <div className="focus-title">
+          {p.name} {p.subject_type === "player" && <span className="who">{p.team} {p.position}</span>}
+          <span className="prop">{p.bet_label}</span>
+          {p.lines.length > 0 && <span className="line">{p.lines.join("  ·  ")}</span>}
+        </div>
+        <div className="focus-meta">
+          <span className="focus-dots">{dots.map((on, i) => <span key={i} className={on ? "" : "off"}>●</span>)}</span>
+          <strong style={{ color: "#e4e6eb" }}>{p.analysts}</strong> {p.analysts === 1 ? "analyst" : "analysts"}
+          {" "}on {p.shows} {p.shows === 1 ? "show" : "shows"} · {p.team} {matchup} · {gameLabel(p.game_start)}
+        </div>
+        <div className="focus-chips">
+          {p.sharp_count > 0 && <span className="focus-chip good">sharp money cited</span>}
+          {p.opposing_analysts > 0 && <span className="focus-chip warn">{p.opposing_analysts} {p.opposing_analysts === 1 ? "analyst is" : "analysts are"} on the other side</span>}
+          {p.opposing_analysts === 0 && p.analysts > 1 && <span className="focus-chip good">no one on the other side</span>}
+        </div>
+        <details className="focus-details">
+          <summary>What they said ({p.takes.length}) &amp; why this score</summary>
+          {p.takes.map((t, i) => (
+            <div key={i} className="focus-take">
+              <span className="who">{t.analyst}</span> <span style={{ color: "#6b7280" }}>· {t.show} · {timeAgo(t.at)}</span>{" "}
+              <LeanBadge lean={t.lean} />{t.line && <span style={{ color: "#9099a8" }}> {t.line}</span>}
+              <div>“{t.quote}”</div>
+              {t.why && <div className="why">{t.why}</div>}
+            </div>
+          ))}
+          <div className="focus-breakdown">
+            {p.score_breakdown.map((b, i) => (
+              <React.Fragment key={i}>
+                <span>{b.label}</span>
+                <div className="bar"><div style={{ width: `${b.max ? Math.round(b.points / b.max * 100) : 100}%` }} /></div>
+                <span>{b.points > 0 ? "+" : ""}{b.points}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        </details>
+      </div>
+      <div className="focus-side">
+        <div className="focus-score" style={{ background: focusScoreColor(p.score) }}>{p.score}</div>
+        <div className="focus-score-cap">agreement</div>
+        <div className={"focus-dir " + p.stance}>{STANCE_LABEL[p.stance]}</div>
+      </div>
+    </div>
+  );
+}
+
+function FocusBoard() {
+  const [data, loading] = useApi("/api/best_bets", [], 60000);
+  const picks = (data && data.picks) || [];
+  const strong = picks.filter(p => p.analysts >= 3);
+  const building = picks.filter(p => p.analysts === 2);
+  const singles = picks.filter(p => p.analysts === 1);
+  const nothingStrong = strong.length === 0 && building.length === 0;
+  const ex = (data && data.excluded) || {};
+
+  return (
+    <section>
+      <h2><span>Focus List — what the podcasts agree on, in priority order</span></h2>
+      <div className="focus-intro">
+        Ranked by <strong>how many different analysts are talking about the same bet in the same upcoming game</strong>.
+        The 0–100 score measures how strongly they agree (and how fresh and well-supported the talk is) — it is
+        <strong> not</strong> the chance a bet hits. Covers players, teams and whole-game bets.
+      </div>
+      {loading ? <EmptyState text="Loading..." /> : picks.length === 0 ? (
+        <EmptyState text="No bets discussed yet for upcoming games — this fills in as today's picks shows are processed" />
+      ) : (
+        <>
+          {data.slate.length > 0 && (
+            <div className="focus-games">
+              <span className="label">Upcoming games with talk</span>
+              {data.slate.map(g => (
+                <span key={g.game_id} className="focus-game-chip" title={g.top.join(", ")}>
+                  <b>{g.away} @ {g.home}</b> · {new Date(g.game_start).toLocaleTimeString(undefined, { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })} ET · {g.analyst_mentions} {g.analyst_mentions === 1 ? "mention" : "mentions"}
+                </span>
+              ))}
+            </div>
+          )}
+          {strong.length > 0 && <div className="focus-tier">Start here — 3+ analysts<small>strongest agreement</small></div>}
+          {strong.map(p => <FocusCard key={p.rank} p={p} />)}
+          {building.length > 0 && <div className="focus-tier">Building — 2 analysts<small>worth watching</small></div>}
+          {building.map(p => <FocusCard key={p.rank} p={p} />)}
+          {nothingStrong && singles.length > 0 && (
+            <div className="focus-note">
+              No bet has 2+ analysts behind it yet. Single mentions so far, ranked by freshness and support:
+            </div>
+          )}
+          {singles.length > 0 && !nothingStrong && <div className="focus-tier">Single mentions<small>one analyst so far</small></div>}
+          {singles.map(p => <FocusCard key={p.rank} p={p} />)}
+          <div className="focus-footnote">
+            Window: last {data.window_hours} hours of episodes, upcoming games only. Left out:
+            {" "}{ex.recap_of_past_game || 0} recaps of past games, {ex.game_already_started || 0} for games already started,
+            {" "}{ex.unmatched_subject || 0} where the player/team couldn't be identified, {ex.no_scheduled_game || 0} with no scheduled game found.
+            Analysts are counted once per bet (repeat comments by the same person don't add up).
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function FuturesBoard() {
+  const [data] = useApi("/api/best_bets", [], 60000);
+  const fut = (data && data.futures) || [];
+  if (fut.length === 0) return null;
+  return (
+    <section>
+      <h2><span>Season-long talk (futures, awards)</span></h2>
+      <table>
+        <thead><tr><th>Subject</th><th>Stance</th><th>Line</th><th>Analysts</th><th>Said</th></tr></thead>
+        <tbody>
+          {fut.map((f, i) => (
+            <tr key={i}>
+              <td><strong>{f.name}</strong></td>
+              <td><span className={"focus-dir " + f.stance}>{STANCE_LABEL[f.stance]}</span></td>
+              <td>{f.lines.join(" · ") || "—"}</td>
+              <td>{f.analysts}</td>
+              <td title={f.show}>“{f.quote}”<div style={{ color: "#6b7280", fontSize: 11 }}>{f.show}</div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function RecentTakes() {
+  const [data, loading] = useApi("/api/recent_takes", [], 60000);
+  const rows = data || [];
+  return (
+    <section>
+      <h2><span>Every take, last 48 hours</span></h2>
+      {loading ? <EmptyState text="Loading..." /> : rows.length === 0 ? <EmptyState text="No takes extracted yet" /> : (
+        <table>
+          <thead><tr><th>Subject</th><th>Bet</th><th>Line</th><th>Lean</th><th>When</th><th>Who said it</th></tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td><strong>{r.subject}</strong>{r.timeframe === "past" && <span style={{ color: "#6b7280" }}> (recap)</span>}</td>
+                <td>{r.bet_label}</td>
+                <td>{r.line_context || "—"}</td>
+                <td><LeanBadge lean={r.lean} /></td>
+                <td>{timeAgo(r.published_at)}</td>
+                <td title={r.quote_text}>{r.speaker}<div style={{ color: "#6b7280", fontSize: 11 }}>{r.show_name}</div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function App() {
+  return (
+    <>
+      <header>
+        <h1>🏒 NHL Betting Buzz</h1>
+        <span className="sub">What the podcasts are saying — updated as episodes are processed</span>
+      </header>
+      <div className="disclaimer">
+        For comparison and trend only. Nothing here is a recommendation, and no information on this page is used for any monetary decision.
+      </div>
+      <PipelineStatusBar />
+      <main>
+        <FocusBoard />
+        <FuturesBoard />
+        <RecentTakes />
+      </main>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

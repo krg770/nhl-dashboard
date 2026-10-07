@@ -1,0 +1,9 @@
+psycopg2-binary
+feedparser
+requests
+faster-whisper
+# faster-whisper 1.2.1 breaks on PyAV 19 (open() metadata_errors); 18.x is what ff-dashboard runs
+av<19
+python-dotenv
+fastapi
+uvicorn
