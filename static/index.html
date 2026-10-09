@@ -85,6 +85,11 @@
   .focus-breakdown .bar > div { height: 100%; background: #4f8cff; }
   .focus-footnote { padding: 8px 14px 12px; color: #6b7280; font-size: 11px; border-top: 1px solid #1e2129; }
   .disclaimer { background: #2a2210; border-bottom: 1px solid #4a3a10; color: #fbbf24; padding: 6px 20px; font-size: 11.5px; }
+  .tabs { display: flex; gap: 2px; padding: 0 20px; background: #1a1d24; border-bottom: 1px solid #2a2e37; position: sticky; top: 0; z-index: 5; overflow-x: auto; }
+  .tab { background: none; border: none; border-bottom: 2px solid transparent; color: #9099a8; font-size: 13px; font-weight: 500; padding: 11px 16px; cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .tab:hover { color: #e4e6eb; }
+  .tab.active { color: #fff; border-bottom-color: #4f8cff; }
+  .tab-hint { color: #6b7280; font-size: 12px; margin: -4px 0 12px; }
   .res-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid #262a33; }
   .res-head select { background: #1c2029; color: #e4e6eb; border: 1px solid #3a3f4b; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
   .res-sum { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -402,7 +407,7 @@ function FocusBoard() {
         <strong> not</strong> the chance a bet hits. Covers players, teams and whole-game bets.
       </div>
       {loading ? <EmptyState text="Loading..." /> : picks.length === 0 ? (
-        <EmptyState text="No bets discussed yet for upcoming games — this fills in as today's picks shows are processed" />
+        <EmptyState text="Nothing to show for upcoming games right now — tonight's games have already started. Tomorrow's slate fills in once the shows post (PuckTime around noon ET, Sick Hockey Picks mid-afternoon). Last night's outcomes are on the Results tab." />
       ) : (
         <>
           {data.slate.length > 0 && (
@@ -556,8 +561,14 @@ function AccCard({ rec, sub }) {
 
 function AccuracyBoard() {
   const [data, loading] = useApi("/api/accuracy", [], 120000);
-  if (loading && !data) return null;
-  if (!data || data.overall.graded === 0) return null;
+  if (!data || data.overall.graded === 0) {
+    return (
+      <section>
+        <h2><span>Track record — who has been right?</span></h2>
+        <EmptyState text={loading ? "Loading..." : "No graded bets yet — the record builds as games finish and their bets are settled"} />
+      </section>
+    );
+  }
   const MIN_ANALYST = 3;
   const analysts = data.analysts.filter(a => a.graded >= MIN_ANALYST);
   const hidden = data.analysts.length - analysts.length;
@@ -654,7 +665,31 @@ function RecentTakes() {
   );
 }
 
+const TABS = [
+  { id: "board", label: "Today's Board", hint: "what the podcasts are talking about for upcoming games" },
+  { id: "results", label: "Last Night's Results", hint: "how those bets actually turned out" },
+  { id: "record", label: "Track Record", hint: "which shows and analysts have been right" },
+  { id: "takes", label: "All Takes", hint: "everything extracted in the last 48 hours" },
+];
+
+function initialTab() {
+  const fromHash = (window.location.hash || "").replace("#", "");
+  if (TABS.some(t => t.id === fromHash)) return fromHash;
+  try {
+    const saved = localStorage.getItem("nhl-tab");
+    if (TABS.some(t => t.id === saved)) return saved;
+  } catch (e) {}
+  return "board";
+}
+
 function App() {
+  const [tab, setTab] = useState(initialTab);
+  function pick(id) {
+    setTab(id);
+    window.location.hash = id;
+    try { localStorage.setItem("nhl-tab", id); } catch (e) {}
+  }
+  const current = TABS.find(t => t.id === tab);
   return (
     <>
       <header>
@@ -665,12 +700,20 @@ function App() {
         For comparison and trend only. Nothing here is a recommendation, and no information on this page is used for any monetary decision.
       </div>
       <PipelineStatusBar />
+      <nav className="tabs" role="tablist">
+        {TABS.map(t => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id}
+                  className={"tab" + (tab === t.id ? " active" : "")} onClick={() => pick(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
       <main>
-        <FocusBoard />
-        <ResultsBoard />
-        <AccuracyBoard />
-        <FuturesBoard />
-        <RecentTakes />
+        <div className="tab-hint">{current.hint}</div>
+        {tab === "board" && <><FocusBoard /><FuturesBoard /></>}
+        {tab === "results" && <ResultsBoard />}
+        {tab === "record" && <AccuracyBoard />}
+        {tab === "takes" && <RecentTakes />}
       </main>
     </>
   );
