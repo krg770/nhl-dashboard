@@ -8,7 +8,6 @@ Then open http://localhost:8002 in a browser.
 Everything here is informational comparison of what podcast analysts are
 saying - never a recommendation to bet.
 """
-import difflib
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,6 +17,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from db import get_conn
 import run_history
+from bet_logic import (
+    analyst_key as _analyst_key,
+    plausible_low_match as _plausible_low_match,
+    stance as _stance,
+    opposite as _opposite,
+    find_game as _find_game,
+)
 
 app = FastAPI()
 app.add_middleware(
@@ -36,10 +42,6 @@ BET_TYPE_NAMES = {
     "game_total": "Game Total", "first_period": "1st Period", "both_teams_score": "Both Teams Score",
     "game_other": "Game Bet", "futures": "Futures",
 }
-
-_GENERIC_SPEAKERS = {"", "host", "hosts", "co-host", "cohost", "co host", "house", "guest", "unknown", "panelist"}
-_NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
-
 
 def dict_rows(cur):
     cols = [d[0] for d in cur.description]
@@ -141,49 +143,6 @@ def retry_all_errors():
 
 # ------------------------------------------------------------------ ranking
 
-def _analyst_key(speaker, show_name):
-    """One identity per analyst, so the same person isn't counted twice for
-    the same bet. Generic labels ("co-host") fall back to the show."""
-    s = re.sub(r"\(.*?\)", "", speaker or "").strip().lower()
-    s = re.sub(r"\s+", " ", s)
-    if s in _GENERIC_SPEAKERS or "panelist" in s:
-        return f"{show_name} (host)"
-    return s
-
-
-def _plausible_low_match(raw, full_name):
-    """A low-confidence fuzzy player match is either a transcription
-    misspelling of the right player or a different player. Requires first
-    AND last name to each be individually close. Last-name-only mentions
-    are common in hockey talk, so a single-token mention is accepted only
-    when it closely matches the last name."""
-    def parts(name):
-        return [t for t in re.sub(r"[^a-z' .-]", "", (name or "").lower()).split() if t not in _NAME_SUFFIXES]
-    r, f = parts(raw), parts(full_name)
-    if not r or len(f) < 2:
-        return False
-    last = difflib.SequenceMatcher(None, r[-1], f[-1]).ratio()
-    if len(r) == 1:
-        return last >= 0.85
-    first = difflib.SequenceMatcher(None, r[0], f[0]).ratio()
-    return first >= 0.6 and last >= 0.8
-
-
-def _stance(side, lean):
-    """Which side of the bet this analyst is on. 'over'/'under' when the bet
-    has a line, otherwise 'for'/'against'. A neutral mention is counted as
-    talk about the default side but never as a lean."""
-    if side in ("over", "under"):
-        if lean == "unfavorable":
-            return "under" if side == "over" else "over"
-        return side
-    return "against" if lean == "unfavorable" else "for"
-
-
-def _opposite(stance):
-    return {"over": "under", "under": "over", "for": "against", "against": "for"}[stance]
-
-
 def _consensus_score(analysts, shows, share_for, sharp, recent_hours, game_hours_away):
     """0-100 strength of analyst agreement - NOT a probability the bet hits.
     Every term is returned so the UI can show exactly why."""
@@ -197,20 +156,6 @@ def _consensus_score(analysts, shows, share_for, sharp, recent_hours, game_hours
     ]
     total = max(0, min(100, sum(p[1] for p in parts)))
     return total, [{"label": l, "points": pts, "max": mx} for l, pts, mx in parts]
-
-
-def _find_game(games_by_team, team, opponent, published_at):
-    """The player's/team's next game that hasn't started when the take was
-    recorded (an hour of grace, since shows are sometimes posted just after
-    puck drop). If the analyst named the opponent, require that matchup."""
-    cutoff = published_at - timedelta(hours=1)
-    for g in games_by_team.get(team, []):
-        if g["start_time_utc"] < cutoff:
-            continue
-        if opponent and opponent not in (g["away"], g["home"]):
-            continue
-        return g
-    return None
 
 
 @app.get("/api/best_bets")
@@ -449,6 +394,186 @@ def get_recent_takes(hours: int = Query(48, ge=6, le=120)):
     for r in rows:
         r["bet_label"] = BET_TYPE_NAMES.get(r["bet_type"], r["bet_type"])
     return rows
+
+
+# ------------------------------------------------------------------ results
+
+_RESULT_SELECT = """
+    SELECT br.bet_quote_id, br.game_id, br.stance, br.line, br.actual, br.outcome, br.detail,
+           bq.subject_type, bq.bet_type, bq.line_context, bq.lean, bq.speaker, bq.player_id,
+           bq.team, bq.opponent, bq.raw_mention, p.full_name, t.name AS team_name, ot.name AS opp_name,
+           pod.id AS pod_id, pod.name AS show_name, e.published_at,
+           g.game_date, g.start_time_utc, g.away, g.home, g.away_score, g.home_score, g.last_period_type
+    FROM bet_results br
+    JOIN bet_quotes bq ON bq.id = br.bet_quote_id
+    JOIN episodes e ON e.id = bq.episode_id
+    JOIN podcasts pod ON pod.id = e.podcast_id
+    JOIN games g ON g.id = br.game_id
+    LEFT JOIN players p ON p.id = bq.player_id
+    LEFT JOIN teams t ON t.abbrev = bq.team
+    LEFT JOIN teams ot ON ot.abbrev = bq.opponent
+"""
+
+
+def _subject(r):
+    """Display name + a stable key for what the bet is on."""
+    if r["subject_type"] == "player":
+        return r["full_name"] or r["raw_mention"], ("p", r["player_id"])
+    if r["subject_type"] == "team":
+        return r["team_name"] or r["raw_mention"], ("t", r["team"])
+    name = f'{r["team_name"] or r["team"]} vs {r["opp_name"] or r["opponent"]}'
+    return name, ("g", frozenset((r["team"], r["opponent"])))
+
+
+@app.get("/api/results")
+def get_results(date: str = Query(None, description="game date YYYY-MM-DD; default = latest with results")):
+    """
+    How the analysts' bets actually turned out, for one night of games.
+    Bets are grouped per game, then per distinct bet (subject + bet type +
+    side + line) with every analyst who made it. Only bets that could be
+    settled unambiguously get a hit/miss; the rest are counted as ungraded.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT g.game_date FROM bet_results br JOIN games g ON g.id = br.game_id
+        WHERE g.game_date <= CURRENT_DATE ORDER BY g.game_date DESC LIMIT 14
+        """
+    )
+    dates = [d[0] for d in cur.fetchall()]
+    if not dates:
+        cur.close()
+        conn.close()
+        return {"date": None, "available_dates": [], "games": [], "summary": {}, "ungraded": []}
+    target = datetime.strptime(date, "%Y-%m-%d").date() if date else dates[0]
+
+    cur.execute(_RESULT_SELECT + " WHERE g.game_date = %s ORDER BY g.start_time_utc, br.bet_quote_id", (target,))
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+
+    games = {}
+    ungraded = {}
+    for r in rows:
+        g = games.setdefault(r["game_id"], {
+            "game_id": r["game_id"], "away": r["away"], "home": r["home"], "away_score": r["away_score"],
+            "home_score": r["home_score"], "ended_in": r["last_period_type"], "start": r["start_time_utc"],
+            "bets": {},
+        })
+        if r["outcome"] == "ungraded":
+            ungraded[r["detail"]] = ungraded.get(r["detail"], 0) + 1
+            continue
+        name, skey = _subject(r)
+        line = float(r["line"]) if r["line"] is not None else None
+        key = (skey, r["bet_type"], r["stance"], line)
+        b = g["bets"].setdefault(key, {
+            "name": name, "bet_type": r["bet_type"], "bet_label": BET_TYPE_NAMES.get(r["bet_type"], r["bet_type"]),
+            "stance": r["stance"], "line": line, "odds": None, "outcome": r["outcome"], "detail": r["detail"],
+            "analysts": {},
+        })
+        raw_line = (r["line_context"] or "").strip()
+        if raw_line and re.fullmatch(r"[+-]\d{3,}", raw_line):
+            b["odds"] = raw_line
+        who = _analyst_key(r["speaker"], r["show_name"])
+        b["analysts"].setdefault(who, {"name": r["speaker"] or r["show_name"], "show": r["show_name"]})
+
+    summary = {"hit": 0, "miss": 0, "push": 0, "void": 0}
+    out_games = []
+    for g in games.values():
+        bets = []
+        for b in g["bets"].values():
+            summary[b["outcome"]] = summary.get(b["outcome"], 0) + 1
+            b["analysts"] = list(b["analysts"].values())
+            bets.append(b)
+        order = {"hit": 0, "miss": 1, "push": 2, "void": 3}
+        bets.sort(key=lambda b: (order.get(b["outcome"], 9), -len(b["analysts"]), b["name"]))
+        g["bets"] = bets
+        out_games.append(g)
+    out_games.sort(key=lambda g: g["start"])
+    return {
+        "date": target.isoformat(),
+        "available_dates": [d.isoformat() for d in dates],
+        "games": out_games,
+        "summary": summary,
+        "ungraded": [{"reason": k, "count": v} for k, v in sorted(ungraded.items(), key=lambda kv: -kv[1])],
+    }
+
+
+@app.get("/api/accuracy")
+def get_accuracy(days: int = Query(30, ge=1, le=180)):
+    """
+    Track record per show and per analyst: of the bets they backed (or faded)
+    that could be settled, how many hit. Each analyst counts once per distinct
+    bet (same person, subject, bet type, game, side and line) so repeating a
+    pick doesn't pad the record; pushes are shown but excluded from the rate.
+    Speaker names come from transcripts without voice labelling, so a show's
+    record is the dependable number and an individual's is best-effort.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        _RESULT_SELECT + """
+        WHERE br.outcome IN ('hit', 'miss', 'push') AND g.game_date >= CURRENT_DATE - %s
+        ORDER BY e.published_at
+        """,
+        (days,),
+    )
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    cur.execute(
+        "SELECT count(*) FROM bet_results br JOIN games g ON g.id = br.game_id "
+        "WHERE br.outcome = 'ungraded' AND g.game_date >= CURRENT_DATE - %s",
+        (days,),
+    )
+    ungraded = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+
+    seen = set()
+    shows, analysts, types = {}, {}, {}
+    overall = {"hit": 0, "miss": 0, "push": 0}
+    names = {}
+    for r in rows:
+        who = _analyst_key(r["speaker"], r["show_name"])
+        _, skey = _subject(r)
+        dedupe = (who, r["show_name"], skey, r["bet_type"], r["game_id"], r["stance"], float(r["line"]) if r["line"] is not None else None)
+        if dedupe in seen:
+            continue
+        seen.add(dedupe)
+        o = r["outcome"]
+        overall[o] += 1
+        shows.setdefault(r["show_name"], {"hit": 0, "miss": 0, "push": 0})[o] += 1
+        a = analysts.setdefault((who, r["show_name"]), {"hit": 0, "miss": 0, "push": 0})
+        a[o] += 1
+        names.setdefault((who, r["show_name"]), {}).setdefault(r["speaker"] or r["show_name"], 0)
+        names[(who, r["show_name"])][r["speaker"] or r["show_name"]] += 1
+        types.setdefault(r["bet_type"], {"hit": 0, "miss": 0, "push": 0})[o] += 1
+
+    def finish(name, rec, **extra):
+        decided = rec["hit"] + rec["miss"]
+        return {"name": name, **extra, **rec, "graded": decided + rec["push"],
+                "pct": round(rec["hit"] / decided * 100) if decided else None}
+
+    analyst_list = []
+    for (who, show), rec in analysts.items():
+        spelled = max(names[(who, show)].items(), key=lambda kv: kv[1])[0]
+        label = f"{show} host" if who.endswith("(host)") else spelled
+        analyst_list.append(finish(label, rec, show=show))
+    analyst_list.sort(key=lambda a: (-a["graded"], a["name"]))
+    show_list = sorted((finish(n, rec) for n, rec in shows.items()), key=lambda s: -s["graded"])
+    type_list = sorted(
+        (finish(BET_TYPE_NAMES.get(t, t), rec) for t, rec in types.items()), key=lambda s: -s["graded"]
+    )
+    return {
+        "window_days": days,
+        "overall": finish("All shows", overall),
+        "shows": show_list,
+        "analysts": analyst_list,
+        "by_bet_type": type_list,
+        "ungraded": ungraded,
+    }
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

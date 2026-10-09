@@ -61,6 +61,15 @@ same `quote_text`.
 - `line_context`: JUST the number/line, short and scannable: "over 3.5",
   "-1.5", "+135", "6.5", "-110". null if none was given. Do not put
   narration here (line movement goes in `betting_relevance`).
+  Bets are settled against this later, so capture the LINE whenever one is
+  stated or clearly implied, and keep it separate from the odds:
+    * "to record a point" / "get a point" -> side "over", line "0.5" (points)
+    * "to get an assist" -> side "over", line "0.5" (assists)
+    * "multi-point game" -> side "over", line "1.5" (points)
+    * "3+ shots" -> side "over", line "2.5"; "over 2.5 shots" -> side "over", line "2.5"
+    * puck line: keep the SIGN, "-1.5" (favorite) or "+1.5" (underdog)
+  American odds like "+205" or "-160" are odds, not a line; if the only
+  number given is odds, put the odds here and leave `side` null.
 - `quote_text`: the actual statement, under 40 words, verbatim.
 - `speaker`: the host/guest name if identifiable, else the show name.
 - `timestamp_sec`: approximate timestamp from the transcript markers.

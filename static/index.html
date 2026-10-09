@@ -85,6 +85,40 @@
   .focus-breakdown .bar > div { height: 100%; background: #4f8cff; }
   .focus-footnote { padding: 8px 14px 12px; color: #6b7280; font-size: 11px; border-top: 1px solid #1e2129; }
   .disclaimer { background: #2a2210; border-bottom: 1px solid #4a3a10; color: #fbbf24; padding: 6px 20px; font-size: 11.5px; }
+  .res-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid #262a33; }
+  .res-head select { background: #1c2029; color: #e4e6eb; border: 1px solid #3a3f4b; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-sum { display: flex; gap: 6px; flex-wrap: wrap; }
+  .res-pill { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 10px; background: #262a33; color: #9ca3af; }
+  .res-pill.hit { background: #1a3a2a; color: #4ade80; } .res-pill.miss { background: #3a1a1a; color: #f87171; }
+  .res-game { padding: 10px 14px; border-top: 1px solid #1e2129; }
+  .res-score { font-size: 14px; font-weight: 600; color: #e4e6eb; }
+  .res-score small { color: #6b7280; font-weight: 400; margin-left: 6px; }
+  .res-bet { display: flex; gap: 10px; align-items: flex-start; padding: 5px 0; font-size: 12.5px; border-top: 1px solid #1a1d24; }
+  .res-bet:first-of-type { border-top: none; }
+  .res-mark { min-width: 52px; text-align: center; font-size: 10.5px; font-weight: 700; padding: 2px 0; border-radius: 3px; }
+  .res-mark.hit { background: #1a3a2a; color: #4ade80; } .res-mark.miss { background: #3a1a1a; color: #f87171; }
+  .res-mark.push, .res-mark.void { background: #2a2d35; color: #9ca3af; }
+  .res-main { flex: 1; min-width: 0; }
+  .res-main .what { color: #e4e6eb; }
+  .res-main .what b { font-weight: 600; }
+  .res-main .why { color: #9099a8; font-size: 11.5px; margin-top: 1px; }
+  .res-main .who { color: #6b7280; font-size: 11.5px; }
+  .acc-intro { padding: 10px 14px; color: #9099a8; font-size: 12px; line-height: 1.5; border-bottom: 1px solid #262a33; }
+  .acc-intro strong { color: #e4e6eb; }
+  .acc-group { padding: 10px 14px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; }
+  .acc-grid { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px 14px; }
+  .acc-card { width: 138px; text-align: center; }
+  .acc-card .name { font-size: 12.5px; color: #e4e6eb; font-weight: 600; margin-top: 4px; line-height: 1.25; }
+  .acc-card .sub { font-size: 11px; color: #6b7280; }
+  .acc-card .rec { font-size: 12px; color: #c4c9d4; margin-top: 2px; }
+  .acc-chip { display: inline-block; margin-top: 3px; font-size: 10px; padding: 0 6px; border-radius: 8px; background: #3a3218; color: #fbbf24; }
+  .acc-legend { display: flex; gap: 14px; padding: 0 14px 8px; font-size: 11px; color: #9099a8; }
+  .acc-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+  .acc-types { padding: 4px 14px 14px; }
+  .acc-types table { width: auto; }
+  .acc-types td { border: none; padding: 2px 16px 2px 0; color: #c4c9d4; font-size: 12px; }
+  .acc-bar { display: inline-block; width: 120px; height: 7px; background: #3a1a1a; border-radius: 4px; overflow: hidden; vertical-align: middle; }
+  .acc-bar > span { display: block; height: 100%; background: #4ade80; }
   @media (max-width: 700px) {
     main { padding: 12px 10px; }
     .focus-card { flex-wrap: wrap; }
@@ -404,6 +438,170 @@ function FocusBoard() {
   );
 }
 
+// ---------------------------------------------------------------- results
+
+function betWhat(b) {
+  const lined = b.line !== null && (b.stance === "over" || b.stance === "under");
+  let stance;
+  if (lined) stance = `${b.stance.toUpperCase()} ${b.line}`;
+  else if (b.bet_type === "puck_line" && b.line !== null) stance = `${b.line > 0 ? "+" : ""}${b.line}`;
+  else stance = b.stance === "against" ? "FADING" : "BACKING";
+  return (
+    <>
+      <b>{b.name}</b> · {b.bet_label} · {stance}
+      {b.odds && <span style={{ color: "#6b7280" }}> ({b.odds})</span>}
+    </>
+  );
+}
+
+const MARK = { hit: "✓ HIT", miss: "✗ MISS", push: "PUSH", void: "VOID" };
+
+function ResultsBoard() {
+  const [date, setDate] = useState(null);
+  const [data, loading] = useApi(`/api/results${date ? `?date=${date}` : ""}`, [date], 120000);
+  const s = (data && data.summary) || {};
+  const ungradedTotal = ((data && data.ungraded) || []).reduce((n, u) => n + u.count, 0);
+
+  return (
+    <section>
+      <h2><span>Results — how the bets turned out</span></h2>
+      {loading && !data ? <EmptyState text="Loading..." /> : !data || !data.date ? (
+        <EmptyState text="No results yet — bets are graded once their game is over and the box score is in" />
+      ) : (
+        <>
+          <div className="res-head">
+            <strong>{new Date(data.date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</strong>
+            {data.available_dates.length > 1 && (
+              <select value={data.date} onChange={e => setDate(e.target.value)}>
+                {data.available_dates.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
+            <span className="res-sum">
+              <span className="res-pill hit">{s.hit || 0} hit</span>
+              <span className="res-pill miss">{s.miss || 0} missed</span>
+              {s.push > 0 && <span className="res-pill">{s.push} push</span>}
+              {s.void > 0 && <span className="res-pill">{s.void} void (didn't play)</span>}
+              {ungradedTotal > 0 && <span className="res-pill" title={data.ungraded.map(u => `${u.count} × ${u.reason}`).join("\n")}>{ungradedTotal} couldn't be graded</span>}
+            </span>
+          </div>
+          {data.games.map(g => (
+            <div key={g.game_id} className="res-game">
+              <div className="res-score">
+                {g.away} {g.away_score} @ {g.home} {g.home_score}
+                <small>Final{g.ended_in && g.ended_in !== "REG" ? ` (${g.ended_in})` : ""}</small>
+              </div>
+              {g.bets.length === 0 && <div className="why" style={{ color: "#6b7280", fontSize: 12 }}>No gradable bets for this game.</div>}
+              {g.bets.map((b, i) => (
+                <div key={i} className="res-bet">
+                  <span className={"res-mark " + b.outcome}>{MARK[b.outcome]}</span>
+                  <div className="res-main">
+                    <div className="what">{betWhat(b)}</div>
+                    <div className="why">{b.detail}</div>
+                    <div className="who">{b.analysts.map(a => `${a.name} (${a.show})`).join(" · ")}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div className="focus-footnote">
+            A bet is graded only when it can be settled from what was said: a stated over/under with a number, a signed puck line,
+            a moneyline, an anytime goal, and so on. Odds alone ("+100") are not a line, so those bets are counted as
+            "couldn't be graded" rather than guessed. Totals and puck lines exclude the shootout-deciding goal.
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Donut({ hit, miss, push, size = 96, label }) {
+  const total = hit + miss + push;
+  const r = 36, C = 2 * Math.PI * r;
+  const arcs = [["#4ade80", hit], ["#f87171", miss], ["#6b7280", push]];
+  let offset = 0;
+  const decided = hit + miss;
+  const pct = decided ? Math.round(hit / decided * 100) : null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" role="img"
+         aria-label={`${label}: ${hit} hit, ${miss} missed${push ? `, ${push} push` : ""}`}>
+      <circle cx="50" cy="50" r={r} fill="none" stroke="#262a33" strokeWidth="14" />
+      {total > 0 && arcs.map(([color, n], i) => {
+        if (!n) return null;
+        const len = n / total * C;
+        const el = (
+          <circle key={i} cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="14"
+                  strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset}
+                  transform="rotate(-90 50 50)" />
+        );
+        offset += len;
+        return el;
+      })}
+      <text x="50" y="50" textAnchor="middle" dominantBaseline="central" fill="#e4e6eb"
+            fontSize="20" fontWeight="700">{pct === null ? "–" : `${pct}%`}</text>
+    </svg>
+  );
+}
+
+function AccCard({ rec, sub }) {
+  return (
+    <div className="acc-card">
+      <Donut hit={rec.hit} miss={rec.miss} push={rec.push} label={rec.name} />
+      <div className="name">{rec.name}</div>
+      {sub && <div className="sub">{sub}</div>}
+      <div className="rec">{rec.hit}–{rec.miss}{rec.push ? `–${rec.push}` : ""} ({rec.graded} graded)</div>
+      {rec.graded < 10 && <span className="acc-chip">small sample</span>}
+    </div>
+  );
+}
+
+function AccuracyBoard() {
+  const [data, loading] = useApi("/api/accuracy", [], 120000);
+  if (loading && !data) return null;
+  if (!data || data.overall.graded === 0) return null;
+  const MIN_ANALYST = 3;
+  const analysts = data.analysts.filter(a => a.graded >= MIN_ANALYST);
+  const hidden = data.analysts.length - analysts.length;
+  return (
+    <section>
+      <h2><span>Track record — who has been right?</span></h2>
+      <div className="acc-intro">
+        Of the bets each show and analyst <strong>backed or faded</strong> that could be graded over the last {data.window_days} days,
+        how many <strong>hit</strong>. This is a record of what was said, <strong>not a guide to future results or to placing any bet</strong> —
+        and with only days of data, every number here is a small sample that can swing wildly. Pushes are shown but left out of the percentage.
+      </div>
+      <div className="acc-legend">
+        <span><i style={{ background: "#4ade80" }} />Hit</span>
+        <span><i style={{ background: "#f87171" }} />Missed</span>
+        <span><i style={{ background: "#6b7280" }} />Push</span>
+      </div>
+      <div className="acc-group">Overall &amp; by show</div>
+      <div className="acc-grid">
+        <AccCard rec={data.overall} />
+        {data.shows.map(s => <AccCard key={s.name} rec={s} />)}
+      </div>
+      <div className="acc-group">By analyst (names come from the transcript, so co-hosts can occasionally be mixed up — the show's record is the dependable one)</div>
+      <div className="acc-grid">
+        {analysts.map((a, i) => <AccCard key={i} rec={a} sub={a.show} />)}
+        {analysts.length === 0 && <div style={{ color: "#6b7280", fontStyle: "italic" }}>No analyst has {MIN_ANALYST}+ graded bets yet.</div>}
+      </div>
+      {hidden > 0 && <div style={{ padding: "0 14px 10px", color: "#6b7280", fontSize: 11 }}>{hidden} more analyst(s) with fewer than {MIN_ANALYST} graded bets are not shown.</div>}
+      <div className="acc-group">By type of bet</div>
+      <div className="acc-types">
+        <table><tbody>
+          {data.by_bet_type.map(t => (
+            <tr key={t.name}>
+              <td>{t.name}</td>
+              <td><span className="acc-bar"><span style={{ width: `${t.pct ?? 0}%` }} /></span></td>
+              <td>{t.hit}–{t.miss}{t.pct !== null && ` (${t.pct}%)`}</td>
+            </tr>
+          ))}
+        </tbody></table>
+      </div>
+      <div className="focus-footnote">{data.ungraded} more bet(s) in this window could not be graded (no stated line, odds only, or a bet type that can't be settled from the score).</div>
+    </section>
+  );
+}
+
 function FuturesBoard() {
   const [data] = useApi("/api/best_bets", [], 60000);
   const fut = (data && data.futures) || [];
@@ -469,6 +667,8 @@ function App() {
       <PipelineStatusBar />
       <main>
         <FocusBoard />
+        <ResultsBoard />
+        <AccuracyBoard />
         <FuturesBoard />
         <RecentTakes />
       </main>

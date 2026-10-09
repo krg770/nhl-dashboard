@@ -38,6 +38,20 @@ Windows Task Scheduler (hourly, :40)
   on opposite sides rank as competing picks. Analysts are counted once per
   bet. Takes about games that already started, and recaps of past results,
   are excluded.
+- **Results & track record** (`grade_results.py`, run every pipeline run after
+  `load_nhl.py`): finished games' box scores and play-by-play are stored, then
+  every bet where the analyst took a side is graded hit / miss / push / void
+  (player didn't play). Grading is deliberately conservative — a bet needs an
+  explicit over/under with a number, a signed puck line, a moneyline, an
+  anytime/first goal, etc. Odds alone ("+100") are not a line, so those bets are
+  stored as `ungraded` with the reason and counted on the page rather than
+  guessed. Totals and puck lines exclude the shootout-deciding goal.
+  `/api/results` shows a night's graded bets per game; `/api/accuracy` rolls
+  them up per show, per analyst and per bet type (each analyst counts once per
+  distinct bet). Show-level records are dependable; analyst names come from
+  transcripts without voice labelling, so individuals are best-effort. Shared
+  rules (analyst identity, side, game assignment, line parsing) live in
+  `bet_logic.py` so ranking and grading can never disagree.
 - **Matching**: last-name-only mentions are common in hockey talk, so shared
   last names are disambiguated by the team the analyst mentioned; if that
   can't settle it the take is left unmatched rather than guessed.

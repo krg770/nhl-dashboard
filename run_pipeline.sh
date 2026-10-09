@@ -40,6 +40,10 @@ python run_history.py begin >> "$LOG_FILE" 2>&1
 # Rosters, aliases and game states change daily; a few seconds to refresh.
 python load_nhl.py >> "$LOG_FILE" 2>&1
 
+# Settle last night's bets against the final scores / box scores (conservative:
+# only bets that can be settled unambiguously are graded).
+python grade_results.py >> "$LOG_FILE" 2>&1
+
 python poller.py >> "$LOG_FILE" 2>&1
 python worker.py >> "$LOG_FILE" 2>&1
 

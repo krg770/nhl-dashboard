@@ -52,6 +52,31 @@ CREATE TABLE IF NOT EXISTS games (
 CREATE INDEX IF NOT EXISTS idx_games_date ON games (game_date);
 CREATE INDEX IF NOT EXISTS idx_games_start ON games (start_time_utc);
 
+-- Result data, filled by grade_results.py once a game is over.
+ALTER TABLE games ADD COLUMN IF NOT EXISTS last_period_type TEXT;     -- REG | OT | SO
+ALTER TABLE games ADD COLUMN IF NOT EXISTS first_goal_nhl_id INTEGER;
+ALTER TABLE games ADD COLUMN IF NOT EXISTS stats_loaded BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS player_game_stats (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES games(id),
+    nhl_id INTEGER NOT NULL,
+    player_id INTEGER REFERENCES players(id),   -- null if no longer on a roster we track
+    team TEXT,
+    is_goalie BOOLEAN NOT NULL DEFAULT false,
+    played BOOLEAN NOT NULL DEFAULT true,
+    goals INTEGER NOT NULL DEFAULT 0,
+    assists INTEGER NOT NULL DEFAULT 0,
+    points INTEGER NOT NULL DEFAULT 0,
+    shots INTEGER NOT NULL DEFAULT 0,
+    blocked_shots INTEGER NOT NULL DEFAULT 0,
+    pp_goals INTEGER NOT NULL DEFAULT 0,
+    pp_points INTEGER NOT NULL DEFAULT 0,
+    saves INTEGER NOT NULL DEFAULT 0,
+    shots_against INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (game_id, nhl_id)
+);
+
 CREATE TABLE IF NOT EXISTS podcasts (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -103,6 +128,21 @@ CREATE TABLE IF NOT EXISTS bet_quotes (
 );
 CREATE INDEX IF NOT EXISTS idx_bet_quotes_player ON bet_quotes (player_id);
 CREATE INDEX IF NOT EXISTS idx_bet_quotes_team ON bet_quotes (team);
+
+-- One row per graded bet quote. outcome: hit | miss | push | void | ungraded.
+-- 'void' = the player didn't play; 'ungraded' = no way to settle it
+-- unambiguously (no line stated, odds only, unsupported bet type).
+CREATE TABLE IF NOT EXISTS bet_results (
+    bet_quote_id INTEGER PRIMARY KEY REFERENCES bet_quotes(id),
+    game_id INTEGER NOT NULL REFERENCES games(id),
+    stance TEXT NOT NULL,                 -- over | under | for | against
+    line NUMERIC,
+    actual NUMERIC,
+    outcome TEXT NOT NULL,
+    detail TEXT,
+    graded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bet_results_game ON bet_results (game_id);
 
 CREATE TABLE IF NOT EXISTS pipeline_status (
     id INTEGER PRIMARY KEY DEFAULT 1,
