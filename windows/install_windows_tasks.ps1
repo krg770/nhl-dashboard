@@ -35,6 +35,24 @@ if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
     Write-Host "Created scheduled task '$taskName'."
 }
 
+# 3. Afternoon extra passes. The shows that matter most for tonight's slate post
+#    between about noon and 3:30 PM (PuckTime, Sick Hockey Picks, The Ice Guys)
+#    and the picks are only useful before puck drop, so poll at :10 as well as :40
+#    from 2:10 PM to 6:10 PM - every 30 minutes instead of every hour. Same
+#    script, same lock: if a run is still going, the extra slot is simply skipped.
+$extraName = 'NHL Dashboard Pipeline (afternoon extra)'
+$extraTrigger = New-ScheduledTaskTrigger -Daily -At '2:10PM'
+$extraRepeat = New-ScheduledTaskTrigger -Once -At '2:10PM' `
+    -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Hours 4 -Minutes 1)
+$extraTrigger.Repetition = $extraRepeat.Repetition
+if (Get-ScheduledTask -TaskName $extraName -ErrorAction SilentlyContinue) {
+    Write-Host "Task '$extraName' already exists - leaving it alone."
+} else {
+    Register-ScheduledTask -TaskName $extraName -Action $action -Trigger $extraTrigger -Settings $settings `
+        -Description 'Extra NHL pipeline passes 2:10-6:10 PM so tonight''s picks reach the board sooner' | Out-Null
+    Write-Host "Created scheduled task '$extraName'."
+}
+
 $startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\start_nhl_dashboard.vbs'
 $vbs = @'
 ' Starts the NHL dashboard's web server at Windows logon, hidden (no console

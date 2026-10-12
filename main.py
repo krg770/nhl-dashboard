@@ -160,7 +160,7 @@ def _consensus_score(analysts, shows, share_for, sharp, recent_hours, game_hours
 
 
 @app.get("/api/best_bets")
-def get_best_bets(hours: int = Query(48, ge=6, le=120)):
+def get_best_bets(hours: int = Query(48, ge=6, le=120), grace_hours: int = Query(6, ge=0, le=48)):
     """
     A ranked focus list: which NHL bets are the most analysts talking about
     for a game that hasn't started yet, most-discussed first. A "pick" is one
@@ -259,7 +259,12 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120)):
         if not game:
             excluded["no_scheduled_game"] += 1
             continue
-        if game["start_time_utc"] <= now:
+        # Games that already started stay on the board for a while (marked
+        # "started"): analyst agreement is usually strongest right before puck
+        # drop, and dropping the game at the opening faceoff made the board look
+        # empty exactly when it was fullest. They leave after STARTED_GRACE_HOURS
+        # and then live on the Results tab once graded.
+        if game["start_time_utc"] <= now - timedelta(hours=grace_hours):
             excluded["game_already_started"] += 1
             continue
         groups.setdefault((subject_key, r["bet_type"], game["id"], stance), []).append((r, name, team, game))
@@ -305,7 +310,8 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120)):
         opp_analysts = opposing["analysts"] if opposing else 0
         share_for = b["analysts"] / (b["analysts"] + opp_analysts)
         recent_hours = (now - b["newest"]).total_seconds() / 3600
-        hours_away = (game["start_time_utc"] - now).total_seconds() / 3600
+        started = game["start_time_utc"] <= now
+        hours_away = None if started else (game["start_time_utc"] - now).total_seconds() / 3600
         score, breakdown = _consensus_score(b["analysts"], b["shows"], share_for, b["sharp_count"], recent_hours, hours_away)
         opponent = game["home"] if team == game["away"] else game["away"]
         picks.append({
@@ -325,6 +331,7 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120)):
             "score_breakdown": breakdown,
             "game_id": game["id"],
             "game_start": game["start_time_utc"],
+            "game_started": started,
             "away": game["away"],
             "home": game["home"],
             "opponent": opponent,
@@ -333,7 +340,8 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120)):
             "takes": b["takes"],
         })
 
-    picks.sort(key=lambda p: (-p["analysts"], -p["shows"], -p["score"], -p["sharp_count"], -p["latest_at"].timestamp()))
+    # Upcoming games first, then games already underway; most-discussed first within each.
+    picks.sort(key=lambda p: (p["game_started"], -p["analysts"], -p["shows"], -p["score"], -p["sharp_count"], -p["latest_at"].timestamp()))
     for i, p in enumerate(picks, 1):
         p["rank"] = i
 
@@ -341,7 +349,7 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120)):
     for p in picks:
         g = slate.setdefault(p["game_id"], {
             "game_id": p["game_id"], "away": p["away"], "home": p["home"], "game_start": p["game_start"],
-            "analyst_mentions": 0, "bets": 0, "top": [],
+            "game_started": p["game_started"], "analyst_mentions": 0, "bets": 0, "top": [],
         })
         g["analyst_mentions"] += p["analysts"]
         g["bets"] += 1

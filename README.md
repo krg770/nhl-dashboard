@@ -16,7 +16,8 @@ this one runs on **port 8002** with its own `nhl_dashboard` database.
 ## How it works
 
 ```
-Windows Task Scheduler (hourly, :40)
+Windows Task Scheduler (hourly at :40, 8:40am-9:40pm; plus an extra :10 pass
+                        2:10-6:10pm so tonight's picks reach the board sooner)
   -> wsl.exe -e run_pipeline.sh
        flock guard (one run at a time)
        run_history.py begin   open a row in pipeline_runs
@@ -38,6 +39,11 @@ Windows Task Scheduler (hourly, :40)
   on opposite sides rank as competing picks. Analysts are counted once per
   bet. Takes about games that already started, and recaps of past results,
   are excluded.
+- **Latency**: NHL picks are only useful before puck drop, so while this worker
+  has episodes to process it raises `/tmp/whisper_nhl_priority`; the football and
+  stock workers wait for it to clear before starting their next transcription
+  (delayed, never skipped; the flag is ignored once 30 minutes stale). Games stay
+  on the Focus List, marked "underway", for 6 hours after puck drop.
 - **Results & track record** (`grade_results.py`, run every pipeline run after
   `load_nhl.py`): finished games' box scores and play-by-play are stored, then
   every bet where the analyst took a side is graded hit / miss / push / void

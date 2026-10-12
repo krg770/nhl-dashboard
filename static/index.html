@@ -198,7 +198,9 @@ function gameLabel(iso) {
   const day = d.toLocaleDateString(undefined, { ...opts, weekday: "short" });
   const time = d.toLocaleTimeString(undefined, { ...opts, hour: "numeric", minute: "2-digit" });
   const hrs = (d - new Date()) / 3600000;
-  const rel = hrs < 1 ? "starting soon" : hrs < 24 ? `in ${Math.round(hrs)}h` : `in ${Math.round(hrs / 24)}d`;
+  const mins = Math.round(-hrs * 60);
+  const rel = hrs < 0 ? (mins < 60 ? `started ${Math.max(mins, 1)}m ago` : `started ${Math.round(mins / 60)}h ago`)
+    : hrs < 1 ? "starting soon" : hrs < 24 ? `in ${Math.round(hrs)}h` : `in ${Math.round(hrs / 24)}d`;
   return `${day} ${time} ET (${rel})`;
 }
 
@@ -355,6 +357,7 @@ function FocusCard({ p }) {
           {" "}on {p.shows} {p.shows === 1 ? "show" : "shows"} · {p.team} {matchup} · {gameLabel(p.game_start)}
         </div>
         <div className="focus-chips">
+          {p.game_started && <span className="focus-chip warn">game underway</span>}
           {p.sharp_count > 0 && <span className="focus-chip good">sharp money cited</span>}
           {p.opposing_analysts > 0 && <span className="focus-chip warn">{p.opposing_analysts} {p.opposing_analysts === 1 ? "analyst is" : "analysts are"} on the other side</span>}
           {p.opposing_analysts === 0 && p.analysts > 1 && <span className="focus-chip good">no one on the other side</span>}
@@ -392,9 +395,12 @@ function FocusCard({ p }) {
 function FocusBoard() {
   const [data, loading] = useApi("/api/best_bets", [], 60000);
   const picks = (data && data.picks) || [];
-  const strong = picks.filter(p => p.analysts >= 3);
-  const building = picks.filter(p => p.analysts === 2);
-  const singles = picks.filter(p => p.analysts === 1);
+  // Games that have already dropped the puck stay listed (below) for a few hours.
+  const upcoming = picks.filter(p => !p.game_started);
+  const underway = picks.filter(p => p.game_started);
+  const strong = upcoming.filter(p => p.analysts >= 3);
+  const building = upcoming.filter(p => p.analysts === 2);
+  const singles = upcoming.filter(p => p.analysts === 1);
   const nothingStrong = strong.length === 0 && building.length === 0;
   const ex = (data && data.excluded) || {};
 
@@ -402,20 +408,20 @@ function FocusBoard() {
     <section>
       <h2><span>Focus List — what the podcasts agree on, in priority order</span></h2>
       <div className="focus-intro">
-        Ranked by <strong>how many different analysts are talking about the same bet in the same upcoming game</strong>.
+        Ranked by <strong>how many different analysts are talking about the same bet in the same game</strong>.
         The 0–100 score measures how strongly they agree (and how fresh and well-supported the talk is) — it is
         <strong> not</strong> the chance a bet hits. Covers players, teams and whole-game bets.
       </div>
       {loading ? <EmptyState text="Loading..." /> : picks.length === 0 ? (
-        <EmptyState text="Nothing to show for upcoming games right now — tonight's games have already started. Tomorrow's slate fills in once the shows post (PuckTime around noon ET, Sick Hockey Picks mid-afternoon). Last night's outcomes are on the Results tab." />
+        <EmptyState text="Nothing to show right now. Tomorrow's slate fills in once the shows post (PuckTime around noon ET, The Ice Guys and Sick Hockey Picks mid-afternoon). Last night's outcomes are on the Results tab." />
       ) : (
         <>
           {data.slate.length > 0 && (
             <div className="focus-games">
-              <span className="label">Upcoming games with talk</span>
+              <span className="label">Games with talk</span>
               {data.slate.map(g => (
-                <span key={g.game_id} className="focus-game-chip" title={g.top.join(", ")}>
-                  <b>{g.away} @ {g.home}</b> · {new Date(g.game_start).toLocaleTimeString(undefined, { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })} ET · {g.analyst_mentions} {g.analyst_mentions === 1 ? "mention" : "mentions"}
+                <span key={g.game_id} className="focus-game-chip" title={g.top.join(", ")} style={g.game_started ? { opacity: 0.65 } : undefined}>
+                  <b>{g.away} @ {g.home}</b> · {new Date(g.game_start).toLocaleTimeString(undefined, { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })} ET{g.game_started ? " · underway" : ""} · {g.analyst_mentions} {g.analyst_mentions === 1 ? "mention" : "mentions"}
                 </span>
               ))}
             </div>
@@ -431,9 +437,14 @@ function FocusBoard() {
           )}
           {singles.length > 0 && !nothingStrong && <div className="focus-tier">Single mentions<small>one analyst so far</small></div>}
           {singles.map(p => <FocusCard key={p.rank} p={p} />)}
+          {upcoming.length === 0 && underway.length > 0 && (
+            <div className="focus-note">No upcoming games have talk right now — tonight's games are underway (below). The next slate fills in once the shows post.</div>
+          )}
+          {underway.length > 0 && <div className="focus-tier">Already underway<small>kept for a few hours after puck drop; results land on the Results tab once the games are graded</small></div>}
+          {underway.map(p => <FocusCard key={p.rank} p={p} />)}
           <div className="focus-footnote">
-            Window: last {data.window_hours} hours of episodes, upcoming games only. Left out:
-            {" "}{ex.recap_of_past_game || 0} recaps of past games, {ex.game_already_started || 0} for games already started,
+            Window: last {data.window_hours} hours of episodes; games stay listed for up to 6 hours after they start. Left out:
+            {" "}{ex.recap_of_past_game || 0} recaps of past games, {ex.game_already_started || 0} for games that started over 6 hours ago,
             {" "}{ex.unmatched_subject || 0} where the player/team couldn't be identified, {ex.no_scheduled_game || 0} with no scheduled game found.
             Analysts are counted once per bet (repeat comments by the same person don't add up).
           </div>

@@ -9,6 +9,7 @@ Usage:
 """
 import os
 import re
+import atexit
 import fcntl
 import json
 import difflib
@@ -28,6 +29,19 @@ EXTRACTION_PROMPT_PATH = Path(__file__).parent / "extraction_prompt.md"
 WHISPER_MODEL_SIZE = "small"
 SPEED_FACTOR = "1.5"
 TRANSCRIBE_LOCK = "/tmp/whisper_transcribe.lock"
+# NHL picks are only useful before puck drop, so while this worker has episodes
+# to process it raises this flag; the football and stock workers check it
+# between episodes and wait their turn (they are only ever delayed, and the flag
+# is ignored once it is 30 minutes stale, e.g. if this process was killed).
+PRIORITY_FLAG = "/tmp/whisper_nhl_priority"
+
+
+def _raise_priority():
+    Path(PRIORITY_FLAG).touch()
+
+
+def _drop_priority():
+    Path(PRIORITY_FLAG).unlink(missing_ok=True)
 # A timeout leaves the episode at status=error, retryable from the dashboard
 # (the transcript is kept, so a retry only re-runs extraction).
 EXTRACTION_TIMEOUT_SEC = int(os.getenv("EXTRACTION_TIMEOUT_SEC", "1200"))
@@ -316,11 +330,14 @@ def run():
         avg_seconds_per_episode=None,
     )
 
+    _raise_priority()
+    atexit.register(_drop_priority)  # also covers a crash; a kill is covered by the 30 min staleness check
     print(f"Loading Whisper model ({WHISPER_MODEL_SIZE})...")
     model = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8", cpu_threads=8)
 
     done = 0
     for episode_id, title, audio_url in episodes:
+        _raise_priority()  # heartbeat: keeps the flag fresh for the other workers
         try:
             n = process_episode(episode_id, title, audio_url, model, cur, conn)
             # Stamped when the episode actually finishes.
@@ -354,6 +371,7 @@ def run():
         stage=None, last_finished_at=datetime.now(timezone.utc),
     )
     run_history.finish_run(cur, conn, run_id)
+    _drop_priority()
 
     cur.close()
     conn.close()
