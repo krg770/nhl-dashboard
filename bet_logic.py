@@ -12,14 +12,96 @@ GENERIC_SPEAKERS = {"", "host", "hosts", "co-host", "cohost", "co host", "house"
 NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
 
 
-def analyst_key(speaker, show_name):
-    """One identity per analyst, so the same person isn't counted twice for
-    the same bet. Generic labels ("co-host") fall back to the show."""
+def _base_key(speaker, show_name):
     s = re.sub(r"\(.*?\)", "", speaker or "").strip().lower()
     s = re.sub(r"\s+", " ", s)
     if s in GENERIC_SPEAKERS or "panelist" in s:
         return f"{show_name} (host)"
     return s
+
+
+# (show, base key) -> canonical key, rebuilt from the data by refresh_analyst_aliases().
+_ALIASES = {}
+_ALIASES_LOADED_AT = 0.0
+
+
+def build_analyst_aliases(counts):
+    """
+    Transcripts have no voice labels, so the same host comes back as "Jimmy
+    Murphy", "Jimmy", and sometimes a misspelling ("Andrew McInnes" /
+    "Andrew McKinnis"). Counted as separate analysts they would inflate
+    agreement (one person looks like two) and split a track record. Within a
+    SHOW, this merges:
+      - full names with the same first name and a close last name
+        (difflib ratio >= 0.75) into the most frequently seen spelling;
+      - a bare first name into the one full name that shares it, if exactly
+        one does (two different "Alex"es in a show are left apart).
+    counts: iterable of (show, base_key, n_quotes). Returns {(show, key): canonical}.
+    """
+    by_show = {}
+    for show, key, n in counts:
+        by_show.setdefault(show, {})
+        by_show[show][key] = by_show[show].get(key, 0) + n
+    aliases = {}
+    for show, kc in by_show.items():
+        keys = sorted(kc, key=lambda k: -kc[k])
+        canon = []
+        for key in keys:
+            toks = key.split()
+            if len(toks) < 2 or key.endswith("(host)"):
+                continue
+            match = None
+            for cand in canon:
+                ct = cand.split()
+                if ct[0] == toks[0] and difflib.SequenceMatcher(None, ct[-1], toks[-1]).ratio() >= 0.75:
+                    match = cand
+                    break
+            aliases[(show, key)] = match or key
+            if not match:
+                canon.append(key)
+        for key in keys:
+            if (show, key) in aliases:
+                continue
+            toks = key.split()
+            if len(toks) == 1 and not key.endswith("(host)"):
+                same_first = [c for c in canon if c.split()[0] == toks[0]]
+                aliases[(show, key)] = same_first[0] if len(same_first) == 1 else key
+            else:
+                aliases[(show, key)] = key
+    return aliases
+
+
+def refresh_analyst_aliases(max_age_seconds=60):
+    """Reload the alias map from the database (cached briefly). Called by the
+    endpoints that rank or tally analysts."""
+    import time
+    global _ALIASES, _ALIASES_LOADED_AT
+    if time.time() - _ALIASES_LOADED_AT < max_age_seconds:
+        return
+    from db import get_conn
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT pod.name, bq.speaker, count(*) FROM bet_quotes bq "
+        "JOIN episodes e ON e.id = bq.episode_id JOIN podcasts pod ON pod.id = e.podcast_id "
+        "GROUP BY pod.name, bq.speaker"
+    )
+    merged = {}
+    for show, speaker, n in cur.fetchall():
+        k = (show, _base_key(speaker, show))
+        merged[k] = merged.get(k, 0) + n
+    cur.close()
+    conn.close()
+    _ALIASES = build_analyst_aliases((s, k, n) for (s, k), n in merged.items())
+    _ALIASES_LOADED_AT = time.time()
+
+
+def analyst_key(speaker, show_name):
+    """One identity per analyst, so the same person isn't counted twice for
+    the same bet. Generic labels ("co-host") fall back to the show; spelling
+    variants of one host are merged (see build_analyst_aliases)."""
+    key = _base_key(speaker, show_name)
+    return _ALIASES.get((show_name, key), key)
 
 
 def plausible_low_match(raw, full_name):

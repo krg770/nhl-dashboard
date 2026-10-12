@@ -23,6 +23,7 @@ from bet_logic import (
     stance as _stance,
     opposite as _opposite,
     find_game as _find_game,
+    refresh_analyst_aliases,
 )
 
 app = FastAPI()
@@ -166,6 +167,7 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120)):
     (subject, bet type, game, side). Informational comparison of what the
     podcasts are saying - never a recommendation.
     """
+    refresh_analyst_aliases()
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -433,6 +435,7 @@ def get_results(date: str = Query(None, description="game date YYYY-MM-DD; defau
     side + line) with every analyst who made it. Only bets that could be
     settled unambiguously get a hit/miss; the rest are counted as ungraded.
     """
+    refresh_analyst_aliases()
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -511,6 +514,7 @@ def get_accuracy(days: int = Query(30, ge=1, le=180)):
     Speaker names come from transcripts without voice labelling, so a show's
     record is the dependable number and an individual's is best-effort.
     """
+    refresh_analyst_aliases()
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
