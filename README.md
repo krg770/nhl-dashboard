@@ -40,10 +40,16 @@ Windows Task Scheduler (hourly at :40, 8:40am-9:40pm; plus an extra :10 pass
   bet. Takes about games that already started, and recaps of past results,
   are excluded.
 - **Latency**: NHL picks are only useful before puck drop, so while this worker
-  has episodes to process it raises `/tmp/whisper_nhl_priority`; the football and
-  stock workers wait for it to clear before starting their next transcription
-  (delayed, never skipped; the flag is ignored once 30 minutes stale). Games stay
-  on the Focus List, marked "underway", for 6 hours after puck drop.
+  has episodes to process it raises `/tmp/whisper_nhl_priority`. The football and
+  stock workers check it at every transcription segment boundary: if it is up they
+  release the shared transcription lock, wait, then re-take it and resume exactly
+  where they left off, so an NHL episode waits seconds - not the rest of a
+  possibly hour-long fantasy episode. They are delayed, never skipped; the flag is
+  ignored once 30 minutes stale and each worker's total pause is capped at 2h.
+  Games stay on the Focus List, marked "underway", for 6 hours after puck drop.
+- **Lock hygiene**: `run_pipeline.sh` holds its flock on fd 200 and starts
+  `start_server.sh`, which closes fd 200 before launching uvicorn. Without that the
+  server inherits the lock and every later run logs "Skipped (already running)".
 - **Results & track record** (`grade_results.py`, run every pipeline run after
   `load_nhl.py`): finished games' box scores and play-by-play are stored, then
   every bet where the analyst took a side is graded hit / miss / push / void
