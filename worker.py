@@ -21,6 +21,7 @@ from faster_whisper import WhisperModel
 from db import get_conn
 import run_history
 from extraction_parse import parse_extraction_output
+from fast_transcribe import transcribe_parallel
 
 WORK_DIR = Path(os.getenv("WORK_DIR", "./work"))
 WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -74,8 +75,15 @@ def transcribe(audio_path: Path, model: WhisperModel) -> str:
     # slows to a crawl (observed: a ~5 min episode taking 40+ min).
     with open(TRANSCRIBE_LOCK, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        segments, _info = model.transcribe(str(audio_path))
-        return "\n".join(f"[{seg.start:.0f}s] {seg.text.strip()}" for seg in segments)
+        # NHL gets the whole machine: split the episode and transcribe the chunks
+        # in parallel (see fast_transcribe.py), several times faster than one
+        # process. Falls back to the single-process path if anything goes wrong.
+        try:
+            return transcribe_parallel(audio_path, WHISPER_MODEL_SIZE)
+        except Exception as e:
+            print(f"  parallel transcription failed ({e}); falling back to a single process")
+            segments, _info = model.transcribe(str(audio_path))
+            return "\n".join(f"[{seg.start:.0f}s] {seg.text.strip()}" for seg in segments)
 
 
 def build_context(cur) -> str:
