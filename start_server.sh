@@ -7,6 +7,11 @@
 set -e
 cd "$(dirname "$0")"
 
+# run_pipeline.sh holds its flock on fd 200 and starts this script. Without this, the
+# long-lived server inherits that fd and keeps the pipeline lock forever (every later
+# scheduled run then logs "Skipped (already running)" and does nothing).
+exec 200>&-
+
 PORT=8002
 LOG_FILE=/tmp/nhl-dashboard-start.log
 
