@@ -30,7 +30,7 @@ from faster_whisper import WhisperModel
 
 N_CHUNKS = 3
 N_WORKERS = 3
-THREADS_PER_CHUNK = 3          # 3 workers x 3 threads = the 9 cores
+THREADS_PER_CHUNK = 2          # 3 workers x 2 threads = 6 cores (WSL is capped at 6 processors)
 SEARCH_WINDOW_SEC = 60         # how far from the ideal split point to look for silence
 
 
@@ -64,7 +64,8 @@ def split_points(path: Path, duration: float, n: int):
             if abs(mid - target) < best_dist:
                 best, best_dist = mid, abs(mid - target)
         points.append(best if best_dist <= SEARCH_WINDOW_SEC else target)
-    return points
+    # never let two split points land on the same silence (would make an empty chunk)
+    return sorted({round(p, 2) for p in points})
 
 
 def _cut(path: Path, start: float, end: float, out: Path):
@@ -100,10 +101,13 @@ def transcribe_parallel(audio_path: Path, model_size: str = "small", n_chunks: i
         workers = min(N_WORKERS, len(jobs))
         results = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            models = list(pool.map(
-                lambda _: WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=THREADS_PER_CHUNK),
-                range(workers),
-            ))
+            # ONE model shared by all worker threads (num_workers lets it run that many
+            # transcriptions at once on shared weights); three separate copies used ~4.5 GB
+            # and got a worker OOM-killed against WSL's 8 GB limit.
+            shared = WhisperModel(
+                model_size, device="cpu", compute_type="int8", cpu_threads=THREADS_PER_CHUNK, num_workers=workers
+            )
+            models = [shared] * workers
             for start in range(0, len(jobs), workers):
                 if pause_hook and start > 0:
                     pause_hook()  # a chance to hand the transcriber to a higher-priority worker
