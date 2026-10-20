@@ -198,6 +198,12 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120), grace_hours: int = Query
         """
     )
     games = dict_rows(cur)
+    cur.execute(
+        """SELECT game_id, ml_home, ml_away, puck_home_line, puck_home_odds, puck_away_line, puck_away_odds,
+                  total_line, over_odds, under_odds, fetched_at FROM game_odds"""
+    )
+    market_by_game = {r["game_id"]: {k: (float(v) if hasattr(v, "as_tuple") else v) for k, v in r.items() if k != "game_id"}
+                      for r in dict_rows(cur)}
     cur.execute("SELECT abbrev, name FROM teams")
     team_names = dict(cur.fetchall())
     cur.close()
@@ -332,6 +338,7 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120), grace_hours: int = Query
             "game_id": game["id"],
             "game_start": game["start_time_utc"],
             "game_started": started,
+            "market": market_by_game.get(game["id"]),
             "away": game["away"],
             "home": game["home"],
             "opponent": opponent,
@@ -349,7 +356,7 @@ def get_best_bets(hours: int = Query(48, ge=6, le=120), grace_hours: int = Query
     for p in picks:
         g = slate.setdefault(p["game_id"], {
             "game_id": p["game_id"], "away": p["away"], "home": p["home"], "game_start": p["game_start"],
-            "game_started": p["game_started"], "analyst_mentions": 0, "bets": 0, "top": [],
+            "game_started": p["game_started"], "market": p["market"], "analyst_mentions": 0, "bets": 0, "top": [],
         })
         g["analyst_mentions"] += p["analysts"]
         g["bets"] += 1

@@ -15,7 +15,10 @@ queue.
 import re
 from datetime import datetime, timedelta, timezone
 
-MIXED_SHOWS = {"The Daily Juice - BettingPros"}
+MIXED_SHOWS = {
+    "The Daily Juice - BettingPros", "Sports Parlay Picks", "Play Me or Fade Me",
+    "The Early Edge (CBS Sports)", "The Hammer Daily", "The Propcast",
+}
 # Daily-slate picks are about tonight's/tomorrow's games, so their useful life
 # is roughly a day. The evening-before shows (published ~11pm for the next
 # day's slate) are still comfortably inside this when picked up the next morning.

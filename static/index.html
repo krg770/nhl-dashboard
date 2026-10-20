@@ -339,6 +339,20 @@ function focusScoreColor(score) {
   return `hsl(${Math.round(Math.min(score, 100) * 1.2)}, 68%, 56%)`;
 }
 
+function fmtOdds(n) { return n == null ? "" : (n > 0 ? "+" + n : String(n)); }
+
+function MarketLine({ p }) {
+  const m = p.market;
+  if (!m) return null;
+  return (
+    <div className="focus-meta" title="Current sportsbook lines (DraftKings via NHL.com) - context only, not a pick">
+      Market: {p.away} {fmtOdds(m.ml_away)} @ {p.home} {fmtOdds(m.ml_home)}
+      {m.total_line != null && <> · O/U {m.total_line}</>}
+      {m.puck_home_line != null && <> · {p.home} {m.puck_home_line > 0 ? "+" : ""}{m.puck_home_line} ({fmtOdds(m.puck_home_odds)})</>}
+    </div>
+  );
+}
+
 function FocusCard({ p }) {
   const dots = Array.from({ length: Math.max(4, p.analysts) }, (_, i) => i < p.analysts);
   const matchup = `${p.is_home ? "vs" : "@"} ${p.opponent}`;
@@ -356,6 +370,7 @@ function FocusCard({ p }) {
           <strong style={{ color: "#e4e6eb" }}>{p.analysts}</strong> {p.analysts === 1 ? "analyst" : "analysts"}
           {" "}on {p.shows} {p.shows === 1 ? "show" : "shows"} · {p.team} {matchup} · {gameLabel(p.game_start)}
         </div>
+        <MarketLine p={p} />
         <div className="focus-chips">
           {p.game_started && <span className="focus-chip warn">game underway</span>}
           {p.sharp_count > 0 && <span className="focus-chip good">sharp money cited</span>}

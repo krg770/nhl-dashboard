@@ -172,3 +172,15 @@ INSERT INTO podcasts (name, rss_url) VALUES
     -- Multi-sport (~11 min/episode); episode_filter.py only lets through episodes with hockey in the title.
     ('The Daily Juice - BettingPros', 'https://rss.pdrl.fm/49ade8/www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/58472ddd-be56-4002-8937-b2d70144b8d5/cddd4ab4-85f4-4769-9ca3-b2d70144b8ef/podcast.rss')
 ON CONFLICT (rss_url) DO NOTHING;
+
+-- Current sportsbook lines per game (NHL.com's public odds feed, DraftKings numbers).
+-- Context only: shown beside the analysts' picks so you can see where the market is.
+CREATE TABLE IF NOT EXISTS game_odds (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id),
+    ml_home INTEGER, ml_away INTEGER,                    -- 2-way moneyline (OT/SO included)
+    puck_home_line NUMERIC, puck_home_odds INTEGER,      -- e.g. -1.5 at +110
+    puck_away_line NUMERIC, puck_away_odds INTEGER,
+    total_line NUMERIC, over_odds INTEGER, under_odds INTEGER,
+    source TEXT NOT NULL DEFAULT 'DraftKings via NHL.com',
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
